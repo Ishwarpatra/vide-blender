@@ -12,7 +12,7 @@ ENV NODE_ENV production
 RUN apt-get update && apt-get install -y python3 python3-pip && rm -rf /var/lib/apt/lists/* && \
     pip install ruff --break-system-packages
 
-COPY --from=builder /app/.wasp/build/server /app/server
+COPY --from=builder /app/.wasp/out/server /app/server
 WORKDIR /app/server
 RUN npm install
 

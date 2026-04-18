@@ -4,10 +4,10 @@ COPY . .
 RUN npm install -g @wasp.sh/wasp-cli@latest
 # Compile Wasp and generate standard Vite output
 RUN wasp build
-WORKDIR /app/.wasp/build/web-app
+WORKDIR /app/.wasp/out/web-app
 RUN npm install && npm run build
 
 FROM nginx:alpine
-COPY --from=builder /app/.wasp/build/web-app/dist /usr/share/nginx/html
+COPY --from=builder /app/.wasp/out/web-app/dist /usr/share/nginx/html
 EXPOSE 80
 CMD ["nginx", "-g", "daemon off;"]
