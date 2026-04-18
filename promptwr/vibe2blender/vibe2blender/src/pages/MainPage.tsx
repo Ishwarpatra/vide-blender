@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import React, { useState } from 'react';
 import { useAction } from 'wasp/client/operations';
 import { chat, generateScript } from 'wasp/client/operations';
 import { Sidebar } from '../components/Sidebar';

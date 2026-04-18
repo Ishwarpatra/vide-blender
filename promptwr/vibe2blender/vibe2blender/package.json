@@ -1,6 +1,10 @@
 {
   "name": "vibe2blender",
   "type": "module",
+  "scripts": {
+    "dev": "vite",
+    "postinstall": "node src/setup-wasp-stub.js"
+  },
   "workspaces": [
     ".wasp/out/*",
     ".wasp/out/sdk/wasp"
@@ -9,12 +13,14 @@
     "@google/generative-ai": "^0.24.1",
     "@types/prismjs": "^1.26.6",
     "@types/react-syntax-highlighter": "^15.5.13",
+    "@vitejs/plugin-react": "^4.7.0",
     "axios": "^1.15.0",
     "prismjs": "^1.30.0",
     "react": "^19.2.1",
     "react-dom": "^19.2.1",
     "react-hook-form": "^7.69.0",
     "react-router": "^7.12.0",
+    "react-router-dom": "^7.14.1",
     "react-syntax-highlighter": "^16.1.1",
     "tailwind-merge": "~3.4.0"
   },

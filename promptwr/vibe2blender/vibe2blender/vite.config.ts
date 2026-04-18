@@ -1,9 +1,9 @@
 import tailwindcss from '@tailwindcss/vite'
 import { defineConfig } from 'vite'
-import { wasp } from 'wasp/client/vite'
+import react from '@vitejs/plugin-react'
 
 export default defineConfig({
-  plugins: [wasp(), tailwindcss()],
+  plugins: [react(), tailwindcss()],
   server: {
     open: true,
   },
