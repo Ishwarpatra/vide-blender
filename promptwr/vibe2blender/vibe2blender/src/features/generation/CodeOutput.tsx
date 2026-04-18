@@ -56,19 +56,9 @@ export const CodeOutput = ({
 
       <div className="flex-1 overflow-auto bg-black/40 font-mono text-[11px]">
         {code ? (
-          <SyntaxHighlighter
-            language="python"
-            style={vscDarkPlus}
-            customStyle={{
-              margin: 0,
-              padding: '24px',
-              background: 'transparent',
-              fontSize: '11px',
-              lineHeight: '1.6',
-            }}
-          >
-            {code}
-          </SyntaxHighlighter>
+          <pre className="p-6 overflow-auto text-green-400 m-0 h-full">
+            <code>{code}</code>
+          </pre>
         ) : (
           <div className="h-full flex flex-col items-center justify-center text-accent/30 space-y-4 opacity-50 grayscale">
             <div className="text-4xl">⌨️</div>
