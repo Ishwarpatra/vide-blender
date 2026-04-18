@@ -30,6 +30,8 @@ export const ChatInput = ({ onSend, isDisabled }: { onSend: (text: string) => vo
     <div className="p-6 border-t border-border bg-bg">
       <div className="relative border border-border bg-secondary/30 focus-within:border-text transition-colors">
         <textarea
+          id="chat-input-textarea"
+          name="chatPrompt"
           ref={textareaRef}
           value={text}
           onChange={(e) => setText(e.target.value.slice(0, maxLength))}
