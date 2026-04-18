@@ -2,13 +2,10 @@ app vibe2blender {
   wasp: {
     version: "^0.23.0"
   },
-  db: {
-    system: PostgreSQL,
-    prisma: {
-      clientPreviewFeatures: ["extendedWhereUnique"]
-    }
-  },
   title: "vibe2blender",
+  db: {
+    system: PostgreSQL
+  },
   head: [
     "<link rel='icon' href='/favicon.ico' />",
   ],
