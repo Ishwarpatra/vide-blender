@@ -1,10 +1,21 @@
 FROM node:24-slim AS builder
 WORKDIR /app
 COPY . .
+
+# 1. Install Wasp CLI
 RUN npm install -g @wasp.sh/wasp-cli@latest
-# Compile Wasp and generate standard Vite output
+
+# 2. Generate the Wasp SDK
 RUN wasp build
 
+# 3. Install NPM dependencies
+RUN npm install
+
+# 4. Compile the React frontend
+WORKDIR /app/.wasp/out/web-app
+RUN npm install && npm run build
+
+# 5. Serve the compiled frontend with Nginx
 FROM nginx:alpine
 COPY --from=builder /app/.wasp/out/web-app/dist /usr/share/nginx/html
 EXPOSE 80

@@ -1,21 +1,33 @@
 FROM node:24-slim AS builder
 WORKDIR /app
 COPY . .
+
+# 1. Install Wasp CLI and generate the code
 RUN npm install -g @wasp.sh/wasp-cli@latest
 RUN wasp build
 
+# 2. Compile the backend IN THE BUILDER STAGE (so it can find the root tsconfig.json)
+WORKDIR /app/.wasp/out/server
+RUN npm install
+RUN npx tsc
+
+# 3. Set up the production server container
 FROM node:24-slim
-WORKDIR /app
-ENV NODE_ENV production
+WORKDIR /app/server
 
-# Install Python and Ruff for backend script formatting (Debian-based)
-RUN apt-get update && apt-get install -y python3 python3-pip && rm -rf /var/lib/apt/lists/* && \
-    pip install ruff --break-system-packages
+# Install Python and Ruff (for Blender code validation)
+RUN apt-get update && apt-get install -y python3 python3-pip \
+    && rm -rf /var/lib/apt/lists/* \
+    && pip install ruff --break-system-packages
 
+# Copy the pre-compiled server (now containing the 'bundle' folder) and libs
 COPY --from=builder /app/.wasp/out/server /app/server
 COPY --from=builder /app/.wasp/out/libs /app/libs
-WORKDIR /app/server
+
+# Install production dependencies
 RUN npm install
 
 EXPOSE 3001
-CMD ["npm", "run", "start"]
+
+# Start the compiled server
+CMD ["npm", "start"]
