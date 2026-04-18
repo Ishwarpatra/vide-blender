@@ -1,7 +1,4 @@
-import { exec } from 'child_process';
-import { promisify } from 'util';
-
-const execAsync = promisify(exec);
+import { spawnSync } from 'child_process';
 
 /**
  * Ruff Formatting Pipeline (Phase 3)
@@ -9,36 +6,44 @@ const execAsync = promisify(exec);
  * LLMs frequently mess up Python's strict whitespace rules.
  * This utility pipes AI-generated Python code through `ruff format -`
  * via stdin, which avoids temp file management entirely.
- *
- * Fallback Behavior:
- *   If Ruff throws an error (the AI wrote fundamentally broken syntax),
- *   the raw AI output is returned with a warning comment prepended,
- *   so the user can still see and manually fix the output.
  */
 export const formatPythonCode = async (code: string): Promise<string> => {
   try {
-    // Pipe code through ruff format via stdin (the `-` flag reads from stdin)
-    const { stdout } = await execAsync('ruff format -', {
+    // Use spawnSync which correctly supports the 'input' (stdin) option
+    const result = spawnSync('ruff', ['format', '-'], {
       input: code,
-      timeout: 10_000, // 10s timeout — formatting should be near-instant
+      encoding: 'utf-8',
+      timeout: 10_000,
     });
 
-    return stdout;
+    if (result.error) {
+      throw result.error;
+    }
+
+    if (result.status === 0 && result.stdout) {
+      return result.stdout;
+    }
+
+    throw new Error(result.stderr || 'Ruff formatting failed');
   } catch (primaryError: any) {
     console.warn('RUFF_STDIN_FORMAT_FAILED:', primaryError?.message);
 
     // Fallback: Try using ruff check --fix via stdin to at least fix imports
     try {
-      const { stdout } = await execAsync('ruff check --fix -', {
+      const fallbackResult = spawnSync('ruff', ['check', '--fix', '-'], {
         input: code,
+        encoding: 'utf-8',
         timeout: 10_000,
       });
-      return stdout || code;
+
+      if (fallbackResult.status === 0 && fallbackResult.stdout) {
+        return fallbackResult.stdout || code;
+      }
     } catch (fallbackError: any) {
       console.warn('RUFF_CHECK_ALSO_FAILED:', fallbackError?.message);
-
-      // Final fallback: return the raw code with a warning comment
-      return `# ⚠️ RUFF_FORMAT_WARNING: Auto-formatting failed. The code below may have syntax issues.\n# Please review indentation and syntax before running in Blender.\n\n${code}`;
     }
+
+    // Final fallback: return the raw code with a warning comment
+    return `# ⚠️ RUFF_FORMAT_WARNING: Auto-formatting failed. The code below may have syntax issues.\n# Please review indentation and syntax before running in Blender.\n\n${code}`;
   }
 };

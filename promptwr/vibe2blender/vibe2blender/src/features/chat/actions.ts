@@ -6,9 +6,10 @@ import { ChatInputSchema } from '../../backend/core/validators';
 import { guardPrompt } from '../../backend/core/promptGuard';
 
 // ─── Type Definitions ───────────────────────────────────────────────
-interface ChatMessage {
+type ChatMessage = {
   role: 'user' | 'assistant' | 'system';
   content: string;
+  [key: string]: any;
 }
 
 type ChatPayload = {
@@ -38,7 +39,7 @@ const sliceConversationWindow = (history: ChatMessage[], maxMessages = 6): ChatM
 };
 
 // ─── Wasp Action ────────────────────────────────────────────────────
-export const chat: Chat<ChatPayload, { role: string; content: string }> = async (args, context) => {
+export const chat: Chat<ChatPayload, { role: string; content: string; [key: string]: any }> = async (args, context) => {
   if (!context.user) {
     throw new HttpError(401, 'AUTHENTICATION_REQUIRED');
   }
