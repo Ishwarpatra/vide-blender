@@ -49,4 +49,16 @@ action generateScript {
   auth: true,
   entities: [User, BlenderScript]
 }
+
+query getScripts {
+  fn: import { getScripts } from "@src/features/generation/queries",
+  auth: true,
+  entities: [BlenderScript]
+}
+
+query ollamaHealth {
+  fn: import { ollamaHealth } from "@src/backend/core/healthCheck",
+  auth: true,
+  entities: []
+}
 // #endregion Core
