@@ -1,7 +1,42 @@
-node_modules/
-.wasp/
-dist/
-build/
+# ── Node ──────────────────────────────────────────────────────────────
+# Fix: trailing slash on node_modules/ is treated as a literal name by
+# some Docker daemon versions. Use the plain form to guarantee exclusion.
+node_modules
+.wasp
+
+# ── Build outputs ─────────────────────────────────────────────────────
+dist
+build
+
+# ── Environment / Secrets — NEVER bake credentials into an image ──────
 .env
 .env.server
 .env.client
+.env.local
+.env.development.local
+.env.test.local
+.env.production.local
+
+# ── Python artifacts (mirrored from .gitignore) ───────────────────────
+# The CI/CD pipeline installs Ruff inside the container from scratch.
+# Host-compiled bytecodes are cross-platform-incompatible and waste context.
+__pycache__/
+*.py[cod]
+*$py.class
+.venv/
+venv/
+ENV/
+
+# ── Database files — prevent SQLite dev DBs from bloating the image ───
+*.db
+*.sqlite
+*.sqlite-journal
+
+# ── Logs ──────────────────────────────────────────────────────────────
+*.log
+npm-debug.log*
+
+# ── System files ──────────────────────────────────────────────────────
+.DS_Store
+Thumbs.db
+.git

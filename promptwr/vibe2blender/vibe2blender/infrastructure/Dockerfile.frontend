@@ -1,4 +1,5 @@
-FROM node:24-slim AS builder
+# CI/CD mandates Node 20 LTS — NEVER use latest or bleeding-edge versions
+FROM node:20-alpine AS builder
 WORKDIR /app
 COPY . .
 
