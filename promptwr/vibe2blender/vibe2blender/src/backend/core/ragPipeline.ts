@@ -166,14 +166,34 @@ const VECTOR_STORE: Document[] = [
 ];
 
 // ─── Multi-keyword Relevance Scorer (TF heuristic) ───────────────────────────
+
+// Cache compiled regexes so they are built once per tag, not on every score call.
+const _tagRegexCache = new Map<string, RegExp>();
+
+/** Returns a word-boundary regex for a tag, using a cache to avoid recompilation. */
+function getTagRegex(tag: string): RegExp {
+  if (!_tagRegexCache.has(tag)) {
+    // Escape special regex chars in the tag before building the pattern.
+    const escaped = tag.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+    _tagRegexCache.set(tag, new RegExp(`\\b${escaped}\\b`, 'i'));
+  }
+  return _tagRegexCache.get(tag)!;
+}
+
 /**
- * Scores each document by counting how many of its tags appear in the query.
- * Higher score = more relevant. This is a stand-in for cosine-similarity search.
+ * Scores each document by counting how many of its tags match the query
+ * as whole words (word-boundary regex, NOT substring .includes()).
+ *
+ * Substring matching caused false positives:
+ *   tag 'ring'  would match inside 'string'
+ *   tag 'box'   would match inside 'boxing'
+ *
+ * Word-boundary regex ensures only exact token matches are counted.
+ * Higher score = more relevant. Stand-in for cosine-similarity search.
  */
-function scoreDocument(doc: Document, lowerQuery: string): number {
+function scoreDocument(doc: Document, query: string): number {
   return doc.tags.reduce((score, tag) => {
-    // Partial match: query contains the tag word anywhere
-    return lowerQuery.includes(tag) ? score + 1 : score;
+    return getTagRegex(tag).test(query) ? score + 1 : score;
   }, 0);
 }
 
@@ -188,11 +208,10 @@ const TOP_K = 5; // Return the top 5 most relevant documents
  * @returns A formatted string of relevant bpy API guidelines.
  */
 export const retrieveBlenderContext = async (query: string): Promise<string> => {
-  const lowerQuery = query.toLowerCase();
-
-  // Score all documents against the query
+  // Pass the raw query to scoreDocument — the regex patterns are case-insensitive
+  // so we do not need to pre-lowercase here.
   const scored = VECTOR_STORE
-    .map(doc => ({ doc, score: scoreDocument(doc, lowerQuery) }))
+    .map(doc => ({ doc, score: scoreDocument(doc, query) }))
     .filter(({ score }) => score > 0)
     .sort((a, b) => b.score - a.score)
     .slice(0, TOP_K);

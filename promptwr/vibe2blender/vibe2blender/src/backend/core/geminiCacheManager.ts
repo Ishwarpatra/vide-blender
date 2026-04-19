@@ -28,10 +28,40 @@ interface CacheEntry {
 }
 
 // ─── Module-level singleton ──────────────────────────────────────────
-// Stores a single cache entry across the lifetime of the Node process.
-// In production behind a multi-instance deployment, this should be stored
-// in a shared Redis key so all instances share the same cached token.
+//
+// ⚠️  KNOWN LIMITATION — Volatile Cache Memory Leak
+// The cache ID is stored in a Node process-level variable. This means:
+//   1. Every server RESTART or CRASH wipes _cacheEntry and triggers a new
+//      ai.caches.create() call, paying the full system-prompt token cost to
+//      create a brand-new cache while the old one sits orphaned on Google’s
+//      servers until its TTL expires naturally.
+//   2. In a multi-instance deployment (e.g., Docker replicas, Cloud Run)
+//      each instance maintains its own independent _cacheEntry and will
+//      independently create and own separate caches.
+//
+// PRODUCTION REMEDIATION:
+//   Persist the cache name + expiresAt in your PostgreSQL `BlenderScript`
+//   table (or a dedicated `GeminiCache` row/Redis key) and read it back on
+//   startup. Use GEMINI_CACHE_NAME env var as a deployment-time override
+//   to reattach a known, still-valid cache ID without an API round-trip.
+//
+// HACKATHON WORKAROUND:
+//   Set GEMINI_CACHE_NAME in .env.server to a previously created cache ID.
+//   The startup hydration block below will reuse it across restarts for the
+//   duration of the hackathon without creating orphaned caches.
 let _cacheEntry: CacheEntry | null = null;
+
+// Startup hydration: if a known cache name is pre-configured via env var,
+// seed _cacheEntry so the first request skips the cache-creation API call.
+// expiresAt is set conservatively to 30 minutes from now (we don’t know the
+// true TTL of a pre-existing cache, so we re-verify after 30 min).
+(function hydrateFromEnv() {
+  const envName = process.env.GEMINI_CACHE_NAME;
+  if (envName && envName !== 'mock' && envName !== '') {
+    _cacheEntry = { name: envName, expiresAt: Date.now() + 30 * 60 * 1000 };
+    console.info(`[CacheManager] Hydrated from GEMINI_CACHE_NAME env var: ${envName}`);
+  }
+})();
 
 // ─── Configuration ───────────────────────────────────────────────────
 const TTL_SECONDS = 3600; // 1-hour TTL (Gemini minimum is 60 seconds)

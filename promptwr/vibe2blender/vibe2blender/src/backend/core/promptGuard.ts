@@ -96,15 +96,24 @@ const INJECTION_PATTERNS: RegExp[] = [
   /ignoresafetyguide(line)?s?/i,
 ];
 
+// ─── Delimiter Constants ─────────────────────────────────────────────────────
+// Centralised so the strip step and the wrap step always use the exact same strings.
+const DELIMITER_OPEN  = '<<<USER_INPUT>>>';
+const DELIMITER_CLOSE = '<<<END_USER_INPUT>>>';
+
 // ─── Public API ──────────────────────────────────────────────────────────────
 
 /**
  * Canonicalise the input and test it against the injection pattern blocklist.
  * Throws a 400 HttpError if any pattern matches.
- * Returns the original (unmodified) input wrapped in explicit user-input delimiters.
+ *
+ * Delimiter escape mitigation: strips DELIMITER_OPEN and DELIMITER_CLOSE from
+ * the raw input BEFORE wrapping it. An attacker who includes <<<END_USER_INPUT>>>
+ * in their message would otherwise break out of the structural sandbox and
+ * inject arbitrary text into the system-instruction section of the LLM prompt.
  *
  * @param userInput - Raw user-provided string.
- * @returns The delimited input string safe to embed in an LLM prompt.
+ * @returns The delimiter-wrapped string safe to embed in an LLM prompt.
  */
 export const guardPrompt = (userInput: string): string => {
   const canonical = canonicalise(userInput);
@@ -117,7 +126,12 @@ export const guardPrompt = (userInput: string): string => {
     }
   }
 
-  // Wrap with explicit delimiters to structurally separate user data from
-  // the developer's system instructions inside the final LLM prompt.
-  return `<<<USER_INPUT>>>\n${userInput}\n<<<END_USER_INPUT>>>`;
+  // Strip our own delimiter strings from the raw input before wrapping.
+  // This closes the delimiter-escape vector: if an attacker embeds the closing
+  // delimiter in their message it is neutralised here, not in the LLM context.
+  const safeInput = userInput
+    .replace(new RegExp(DELIMITER_OPEN.replace(/[<>]/g, '\\$&'),  'gi'), '')
+    .replace(new RegExp(DELIMITER_CLOSE.replace(/[<>]/g, '\\$&'), 'gi'), '');
+
+  return `${DELIMITER_OPEN}\n${safeInput}\n${DELIMITER_CLOSE}`;
 };

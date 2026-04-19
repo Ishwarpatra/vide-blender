@@ -1,7 +1,7 @@
 import { type GenerateScript } from 'wasp/server/operations';
 import { HttpError } from 'wasp/server';
 import { GoogleGenAI } from '@google/genai';
-import { checkRateLimit, GENERATE_LIMIT, GENERATE_DAILY_LIMIT } from '../../backend/core/rateLimiter';
+import { enforceGenerateLimits } from '../../backend/core/rateLimiter';
 import { GenerationInputSchema } from '../../backend/core/validators';
 import { guardPrompt } from '../../backend/core/promptGuard';
 import { sanitizeOutput } from '../../backend/core/outputSanitizer';
@@ -48,9 +48,9 @@ export const generateScript: GenerateScript<GenerateScriptPayload> = async (args
   // but we still account for them to enforce our conservative TPM budget.
   const estimatedTokens = Math.ceil((args.refinedPrompt.length + COMPILER_SYSTEM_PROMPT.length) / 4);
 
-  // 2. Enforce Rate Limit (5 RPM, 5000 TPM, 50 Per Day)
-  checkRateLimit(`generate:${context.user.id}`, GENERATE_LIMIT, estimatedTokens);
-  checkRateLimit(`generate_daily:${context.user.id}`, GENERATE_DAILY_LIMIT, estimatedTokens);
+  // 2. Enforce dual-tier Rate Limit — both per-minute (5 RPM + 5000 TPM)
+  //    and per-day (50 req/day) are enforced atomically in one call.
+  enforceGenerateLimits(context.user.id, estimatedTokens);
 
   // 3. Guard against Prompt Injection
   const guardedPrompt = guardPrompt(args.refinedPrompt);
