@@ -1,5 +1,5 @@
-# CI/CD mandates Node 20 LTS — NEVER use latest or bleeding-edge versions
-FROM node:20-alpine AS builder
+# Wasp framework requires Node >=24.14.1 — aligned to framework hard dependency
+FROM node:24-alpine AS builder
 WORKDIR /app
 COPY . .
 
@@ -18,12 +18,12 @@ RUN npx tsc -b
 RUN ls -la
 
 # 3. Set up the production server container
-FROM node:20-alpine
+FROM node:24-alpine
 WORKDIR /app/server
 
-# Install Python and Ruff (for Blender code validation)
-# Alpine uses apk, not apt-get
-RUN apk add --no-cache python3 py3-pip \
+# Install Python/Ruff (static analysis) + Docker CLI (for sandboxExecutor)
+# Docker CLI lets the backend spawn ephemeral blender-executor containers.
+RUN apk add --no-cache python3 py3-pip docker-cli \
     && pip install ruff --break-system-packages
 
 # Copy the pre-compiled server and libs

@@ -17,7 +17,8 @@ jobs:
     - name: Setup Node.js
       uses: actions/setup-node@v4
       with:
-        node-version: '20'
+        # Node 24 required: Wasp framework hard dependency (>=24.14.1)
+        node-version: '24'
         cache: 'npm'
 
     - name: Install Node Dependencies
@@ -37,5 +38,8 @@ jobs:
     - name: Wasp Build Test
       run: npx wasp build
 
-    - name: Docker Build Test
+    - name: Docker Build Test (main services)
       run: docker-compose -f infrastructure/docker-compose.yml build
+
+    - name: Docker Build Test (blender-executor sandbox)
+      run: docker build -f infrastructure/Dockerfile.blender-executor -t blender-executor:ci .

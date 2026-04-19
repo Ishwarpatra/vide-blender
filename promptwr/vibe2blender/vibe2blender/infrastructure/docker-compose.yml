@@ -47,8 +47,26 @@ services:
     # The Docker IMAGE contains ZERO hardcoded credentials.
     env_file:
       - ../.env.server
+    environment:
+      # Sandbox executor configuration — points to shared host volumes
+      BLENDER_EXECUTOR_IMAGE: blender-executor:latest
+      SANDBOX_SCRIPTS_DIR: /tmp/v2b-scripts
+      SANDBOX_OUTPUTS_DIR: /tmp/v2b-outputs
+      SANDBOX_TIMEOUT_MS: "120000"
+    volumes:
+      # Docker socket: allows the backend to spawn ephemeral blender-executor
+      # containers on the host. This is required for the sandbox pipeline.
+      # Security note: the spawned containers run with --network none and
+      # strict resource limits enforced by sandboxExecutor.ts.
+      - /var/run/docker.sock:/var/run/docker.sock
+      # Shared volumes between backend and blender-executor containers.
+      # The backend writes scripts here; the executor reads and writes GLBs.
+      - v2b-scripts:/tmp/v2b-scripts
+      - v2b-outputs:/tmp/v2b-outputs
     networks:
       - v2b-network
+    ports:
+      - "3001:3001"
 
   frontend:
     build:
@@ -69,3 +87,6 @@ networks:
 volumes:
   pgdata:
   ollama_models:
+  # Shared ephemeral volumes for the sandbox pipeline
+  v2b-scripts:
+  v2b-outputs:

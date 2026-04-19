@@ -1,5 +1,5 @@
-# CI/CD mandates Node 20 LTS — NEVER use latest or bleeding-edge versions
-FROM node:20-alpine AS builder
+# Wasp framework requires Node >=24.14.1 — aligned to framework hard dependency
+FROM node:24-alpine AS builder
 WORKDIR /app
 COPY . .
 

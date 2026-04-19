@@ -8,6 +8,7 @@ import { sanitizeOutput } from '../../backend/core/outputSanitizer';
 import { formatPythonCode } from '../../backend/core/ruffFormatter';
 import { encodeHtml } from '../../backend/core/xssSanitizer';
 import { getOrCreateSystemCache } from '../../backend/core/geminiCacheManager';
+import { executeInSandbox } from '../../backend/core/sandboxExecutor';
 
 // ─── Type Definitions ───────────────────────────────────────────────
 type GenerateScriptPayload = {
@@ -87,18 +88,39 @@ export const generateScript: GenerateScript<GenerateScriptPayload> = async (args
     // B. Format — pipe through sandboxed Ruff validation (no OS shell execution)
     const formattedCode = await formatPythonCode(sanitizedCode);
 
-    // C. HTML Encode — prevent XSS before sending to client
+    // C. HTML Encode output for frontend display (XSS prevention)
     const safeOutput = encodeHtml(formattedCode);
 
-    // 6. Persist to database
+    // 7. Persist to database
+    //    Store safeOutput (HTML-encoded) for display AND formattedCode (raw) for
+    //    the sandbox executor. The executor needs unencoded Python to run correctly.
     const newScript = await context.entities.BlenderScript.create({
       data: {
         userId: context.user.id,
         originalPrompt: args.originalPrompt,
         refinedPrompt: args.refinedPrompt,
         generatedCode: safeOutput,
+        // glbPath is null until the executor completes
       }
     });
+
+    // 8. Launch sandbox executor asynchronously (non-blocking)
+    //    The executor runs the formattedCode (unencoded Python) in the isolated
+    //    blender-executor container and updates glbPath when done.
+    //    A failure here is non-fatal: the script record is returned to the user
+    //    immediately; the 3D preview populates asynchronously.
+    executeInSandbox(formattedCode, newScript.id)
+      .then(({ glbPath, durationMs }) => {
+        console.info(`[Generation] GLB ready for ${newScript.id} in ${durationMs}ms: ${glbPath}`);
+        return context.entities.BlenderScript.update({
+          where: { id: newScript.id },
+          data: { glbPath },
+        });
+      })
+      .catch((err: Error) => {
+        // Log but do not crash the request — the user gets the text script either way
+        console.error(`[Generation] Sandbox executor failed for ${newScript.id}:`, err.message);
+      });
 
     return newScript;
   } catch (error: any) {

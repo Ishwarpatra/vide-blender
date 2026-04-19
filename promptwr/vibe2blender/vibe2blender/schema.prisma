@@ -22,5 +22,8 @@ model BlenderScript {
   originalPrompt String
   refinedPrompt  String
   generatedCode  String
+  // Absolute path on the host to the sandbox-generated .glb preview file.
+  // Null until the blender-executor container completes successfully.
+  glbPath        String?
   createdAt      DateTime @default(now())
 }

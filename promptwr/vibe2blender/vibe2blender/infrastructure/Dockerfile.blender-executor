@@ -1,0 +1,45 @@
+# ─────────────────────────────────────────────────────────────────────────────
+# Blender Executor — Ephemeral Sandbox Container
+#
+# Security posture:
+#   • Started with --network none (no internet access)
+#   • Memory and CPU limits enforced by the Docker host at runtime
+#   • Script volume mounted read-only; only /output is writable
+#   • Container is --rm (auto-deleted on exit)
+#   • Runs as non-root user (blenderuser)
+#
+# This image is NEVER started as a long-running service.
+# It is spawned ephemerally by sandboxExecutor.ts for each generation request.
+# ─────────────────────────────────────────────────────────────────────────────
+FROM ubuntu:22.04
+
+# Suppress interactive prompts during apt
+ENV DEBIAN_FRONTEND=noninteractive
+
+# Install headless Blender and its minimal dependencies
+RUN apt-get update \
+    && apt-get install -y --no-install-recommends \
+       blender \
+       libxrender1 \
+       libxxf86vm1 \
+       libxfixes3 \
+       libxi6 \
+       libxkbcommon0 \
+       libsm6 \
+    && rm -rf /var/lib/apt/lists/*
+
+# Create a non-root user for execution
+RUN useradd -m -u 1001 blenderuser
+USER blenderuser
+
+# Copy the Python wrapper script that drives Blender execution and GLB export
+COPY --chown=blenderuser:blenderuser infrastructure/executor.py /executor.py
+
+# /scripts  — mounted read-only by the caller; contains the generated .py file
+# /output   — mounted read-write by the caller; receives the exported .glb file
+VOLUME ["/scripts", "/output"]
+
+# Args passed after '--' are forwarded to executor.py:
+#   argv[1] = /scripts/<id>.py   (script to execute)
+#   argv[2] = /output/<id>.glb   (output GLB path)
+ENTRYPOINT ["blender", "--background", "--python", "/executor.py", "--"]
