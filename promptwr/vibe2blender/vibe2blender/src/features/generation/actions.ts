@@ -1,11 +1,13 @@
 import { type GenerateScript } from 'wasp/server/operations';
 import { HttpError } from 'wasp/server';
-import { GoogleGenerativeAI } from '@google/generative-ai';
-import { checkRateLimit, GENERATE_LIMIT } from '../../backend/core/rateLimiter';
+import { GoogleGenAI } from '@google/genai';
+import { checkRateLimit, GENERATE_LIMIT, GENERATE_DAILY_LIMIT } from '../../backend/core/rateLimiter';
 import { GenerationInputSchema } from '../../backend/core/validators';
 import { guardPrompt } from '../../backend/core/promptGuard';
 import { sanitizeOutput } from '../../backend/core/outputSanitizer';
 import { formatPythonCode } from '../../backend/core/ruffFormatter';
+import { encodeHtml } from '../../backend/core/xssSanitizer';
+import { getOrCreateSystemCache } from '../../backend/core/geminiCacheManager';
 
 // ─── Type Definitions ───────────────────────────────────────────────
 type GenerateScriptPayload = {
@@ -15,8 +17,8 @@ type GenerateScriptPayload = {
 
 // ─── Gemini Client Setup ────────────────────────────────────────────
 const API_KEY = process.env.GEMINI_API_KEY || '';
-const genAI = new GoogleGenerativeAI(API_KEY);
-const model = genAI.getGenerativeModel({ model: 'gemini-1.5-flash' });
+// Use the new @google/genai SDK which has first-class Context Caching support.
+const ai = new GoogleGenAI({ apiKey: API_KEY });
 
 /**
  * Phase 3 System Prompt — The "Compiler" persona.
@@ -36,34 +38,57 @@ export const generateScript: GenerateScript<GenerateScriptPayload> = async (args
   }
 
   // 1. Validate Input
-  const result = GenerationInputSchema.safeParse({ refinedPrompt: args.refinedPrompt });
+  const result = GenerationInputSchema.safeParse({ refinedPrompt: args.refinedPrompt, userId: context.user.id });
   if (!result.success) {
     throw new HttpError(400, 'INVALID_INPUT', { errors: result.error.format() });
   }
 
-  // 2. Enforce Rate Limit (5 RPM)
-  checkRateLimit(`generate:${context.user.id}`, GENERATE_LIMIT);
+  // Estimate tokens (very rough heuristic: 1 token ~= 4 chars)
+  // The system prompt tokens are heavily discounted when the cache is live,
+  // but we still account for them to enforce our conservative TPM budget.
+  const estimatedTokens = Math.ceil((args.refinedPrompt.length + COMPILER_SYSTEM_PROMPT.length) / 4);
+
+  // 2. Enforce Rate Limit (5 RPM, 5000 TPM, 50 Per Day)
+  checkRateLimit(`generate:${context.user.id}`, GENERATE_LIMIT, estimatedTokens);
+  checkRateLimit(`generate_daily:${context.user.id}`, GENERATE_DAILY_LIMIT, estimatedTokens);
 
   // 3. Guard against Prompt Injection
   const guardedPrompt = guardPrompt(args.refinedPrompt);
 
-  // 4. Call Gemini with the 3-Step System Prompt
+  // 4. Resolve the Gemini Context Cache for the system prompt.
+  //    getOrCreateSystemCache() returns the cache name if a valid cached entry exists,
+  //    or transparently creates a new one via the Caching API if it has expired.
+  //    This drastically lowers per-request token costs for the large system prompt.
+  const cachedContentName = await getOrCreateSystemCache(COMPILER_SYSTEM_PROMPT);
+
+  // 5. Call Gemini, injecting the cached system prompt reference
   try {
-    const geminiResult = await model.generateContent({
+    const geminiResult = await ai.models.generateContent({
+      model: 'gemini-1.5-flash',
       contents: [{
         role: 'user',
-        parts: [{ text: `${COMPILER_SYSTEM_PROMPT}\n\nUser request: ${guardedPrompt}` }],
+        parts: [{ text: `User request: ${guardedPrompt}` }],
       }],
+      config: {
+        // When cachedContentName is a real cache ID the system prompt tokens
+        // are not re-billed at full rate. Both the system instruction AND the
+        // cachedContent field are set; the SDK will prefer the cache token.
+        systemInstruction: COMPILER_SYSTEM_PROMPT,
+        cachedContent: cachedContentName || undefined,
+      },
     });
 
-    const rawOutput = geminiResult.response.text();
+    const rawOutput = geminiResult.text ?? '';
 
-    // 5. Post-Processing Pipeline
+    // 6. Post-Processing Pipeline
     // A. Sanitize — strip markdown fences, conversational filler
     const sanitizedCode = sanitizeOutput(rawOutput);
 
-    // B. Format — pipe through Ruff for Python formatting + lint fixes
+    // B. Format — pipe through sandboxed Ruff validation (no OS shell execution)
     const formattedCode = await formatPythonCode(sanitizedCode);
+
+    // C. HTML Encode — prevent XSS before sending to client
+    const safeOutput = encodeHtml(formattedCode);
 
     // 6. Persist to database
     const newScript = await context.entities.BlenderScript.create({
@@ -71,7 +96,7 @@ export const generateScript: GenerateScript<GenerateScriptPayload> = async (args
         userId: context.user.id,
         originalPrompt: args.originalPrompt,
         refinedPrompt: args.refinedPrompt,
-        generatedCode: formattedCode,
+        generatedCode: safeOutput,
       }
     });
 
@@ -104,12 +129,14 @@ obj.data.materials.append(mat)
 
 print("Fallback monkey generated!")`;
 
+      const safeMockScript = encodeHtml(mockScript);
+
       const newScript = await context.entities.BlenderScript.create({
         data: {
           userId: context.user.id,
           originalPrompt: args.originalPrompt,
           refinedPrompt: args.refinedPrompt,
-          generatedCode: mockScript,
+          generatedCode: safeMockScript,
         }
       });
       return newScript;

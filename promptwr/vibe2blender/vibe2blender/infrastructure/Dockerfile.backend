@@ -9,7 +9,12 @@ RUN wasp build
 # 2. Compile the backend IN THE BUILDER STAGE (so it can find the root tsconfig.json)
 WORKDIR /app/.wasp/out/server
 RUN npm install
-RUN npx tsc
+# Install typescript globally or locally to the builder to ensure tsc is available
+RUN npm install -g typescript
+RUN npx tsc -b
+# Wasp places the build output in dist or src based on the tsconfig, let's just make sure it compiles
+# and let the entrypoint find it. The latest Wasp uses dist/server.js or src/server.js. 
+RUN ls -la
 
 # 3. Set up the production server container
 FROM node:24-slim
@@ -20,7 +25,7 @@ RUN apt-get update && apt-get install -y python3 python3-pip \
     && rm -rf /var/lib/apt/lists/* \
     && pip install ruff --break-system-packages
 
-# Copy the pre-compiled server (now containing the 'bundle' folder) and libs
+# Copy the pre-compiled server and libs
 COPY --from=builder /app/.wasp/out/server /app/server
 COPY --from=builder /app/.wasp/out/libs /app/libs
 
@@ -29,5 +34,5 @@ RUN npm install
 
 EXPOSE 3001
 
-# Start the compiled server
+# Start the compiled server (wasp start script might rely on bundle or src)
 CMD ["npm", "start"]

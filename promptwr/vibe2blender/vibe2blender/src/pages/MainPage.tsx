@@ -44,9 +44,7 @@ export const MainPage = () => {
     setIsTyping(true);
     try {
       const response = await chatAction({
-        message: text,
-        // @ts-ignore - Temporary bypass for stale SDK types; will be resolved after successful build
-        conversationHistory: updatedMessages.map(m => ({
+        messages: updatedMessages.map(m => ({
           role: m.role as 'user' | 'assistant',
           content: m.content,
         })),

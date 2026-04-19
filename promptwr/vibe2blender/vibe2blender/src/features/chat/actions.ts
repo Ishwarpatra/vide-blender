@@ -4,6 +4,8 @@ import axios from 'axios';
 import { checkRateLimit, CHAT_LIMIT } from '../../backend/core/rateLimiter';
 import { ChatInputSchema } from '../../backend/core/validators';
 import { guardPrompt } from '../../backend/core/promptGuard';
+import { retrieveBlenderContext } from '../../backend/core/ragPipeline';
+import { encodeHtml } from '../../backend/core/xssSanitizer';
 
 // ─── Type Definitions ───────────────────────────────────────────────
 type ChatMessage = {
@@ -13,8 +15,7 @@ type ChatMessage = {
 }
 
 type ChatPayload = {
-  message: string;
-  conversationHistory?: ChatMessage[];
+  messages: ChatMessage[];
 }
 
 // ─── Constants ──────────────────────────────────────────────────────
@@ -27,16 +28,6 @@ const OLLAMA_MODEL = process.env.OLLAMA_MODEL || 'qwen2.5';
  * who refines vague user ideas into structured Blender-ready descriptions.
  */
 const INTERVIEWER_SYSTEM_PROMPT = `You are an expert 3D Technical Artist. The user wants to generate a 3D model in Blender. Ask 1 or 2 brief clarifying questions about geometry, lighting, or modifiers to refine their idea into a highly descriptive, single-paragraph prompt. Do NOT write code. Only refine the visual description.`;
-
-/**
- * Context Window Management:
- * Slices the conversation history to only the last 6 messages
- * to avoid sending too much context to the local model and
- * preventing context window bloat.
- */
-const sliceConversationWindow = (history: ChatMessage[], maxMessages = 6): ChatMessage[] => {
-  return history.slice(-maxMessages);
-};
 
 // ─── Wasp Action ────────────────────────────────────────────────────
 export const chat: Chat<ChatPayload, { role: string; content: string; [key: string]: any }> = async (args, context) => {
@@ -54,16 +45,28 @@ export const chat: Chat<ChatPayload, { role: string; content: string; [key: stri
   checkRateLimit(`chat:${context.user.id}`, CHAT_LIMIT);
 
   // 3. Guard against Prompt Injection
-  const guardedPrompt = guardPrompt(args.message);
+  // We apply prompt guard to the last user message
+  const lastUserMessage = [...args.messages].reverse().find(m => m.role === 'user')?.content || '';
+  if (lastUserMessage) {
+    guardPrompt(lastUserMessage);
+  }
 
-  // 4. Context Window Management — keep only last 6 messages
-  const recentHistory = sliceConversationWindow(args.conversationHistory || []);
+  // 3.5. Strict Dual-Model Segregation Check
+  // Ensure the local chat route CANNOT trigger the cloud Gemini model.
+  if (OLLAMA_MODEL.toLowerCase().includes('gemini') || OLLAMA_HOST.includes('generativelanguage')) {
+    throw new HttpError(403, 'DUAL_MODEL_VIOLATION', { message: 'Chat feature is restricted to local models only. Gemini invocation is blocked.' });
+  }
+
+  // 4. Context Window Management — handled by the schema max length (10 messages)
+  
+  // 4.5. RAG Pipeline Integration: Augment the prompt with Blender-specific context
+  const augmentedContext = await retrieveBlenderContext(lastUserMessage);
+  const RAG_SYSTEM_PROMPT = `${INTERVIEWER_SYSTEM_PROMPT}\n\n[RAG_CONTEXT - BLENDER API GUIDELINES]\n${augmentedContext}`;
 
   // 5. Build the full message array for Ollama
   const messages: ChatMessage[] = [
-    { role: 'system', content: INTERVIEWER_SYSTEM_PROMPT },
-    ...recentHistory,
-    { role: 'user', content: guardedPrompt },
+    { role: 'system', content: RAG_SYSTEM_PROMPT },
+    ...args.messages,
   ];
 
   // 6. Call Local Ollama (Qwen) via ollama REST API
@@ -78,7 +81,7 @@ export const chat: Chat<ChatPayload, { role: string; content: string; [key: stri
 
     return {
       role: 'assistant',
-      content: response.data.message.content,
+      content: encodeHtml(response.data.message.content),
     };
   } catch (error: any) {
     console.error('OLLAMA_API_ERROR:', error?.message || error);
@@ -87,7 +90,7 @@ export const chat: Chat<ChatPayload, { role: string; content: string; [key: stri
     if (error?.code === 'ECONNREFUSED' || error?.code === 'ENOTFOUND') {
       return {
         role: 'assistant',
-        content: `⚠️ OLLAMA_OFFLINE: Cannot connect to the local AI interviewer at ${OLLAMA_HOST}. Please ensure:\n1. Ollama is running (ollama serve)\n2. The ${OLLAMA_MODEL} model is pulled (ollama pull ${OLLAMA_MODEL})`,
+        content: encodeHtml(`⚠️ OLLAMA_OFFLINE: Cannot connect to the local AI interviewer at ${OLLAMA_HOST}. Please ensure:\n1. Ollama is running (ollama serve)\n2. The ${OLLAMA_MODEL} model is pulled (ollama pull ${OLLAMA_MODEL})`),
       };
     }
 

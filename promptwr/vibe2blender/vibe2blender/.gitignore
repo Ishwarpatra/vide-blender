@@ -2,8 +2,9 @@
 .wasp/
 node_modules/
 
-# Environment variables
+# Environment variables — NEVER commit real secrets
 .env
+.env.server
 .env.local
 .env.development.local
 .env.test.local

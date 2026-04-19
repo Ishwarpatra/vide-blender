@@ -1,17 +1,28 @@
+# ──────────────────────────────────────────────────────────────────────
+# SECURITY: All secrets are injected at runtime via an external env_file
+# (.env.server). They are NEVER baked into the Docker image layers.
+# This file (.env.server) must NEVER be committed to version control.
+# For CI/CD, inject secrets via the pipeline's secret manager instead.
+# ──────────────────────────────────────────────────────────────────────
 version: '3.8'
 
 services:
   db:
     image: postgres:16-alpine
     restart: always
-    environment:
-      POSTGRES_USER: user
-      POSTGRES_PASSWORD: password
-      POSTGRES_DB: vibe2blender
+    # All POSTGRES_* variables are sourced from ../.env.server at runtime.
+    # Required keys: POSTGRES_USER, POSTGRES_PASSWORD, POSTGRES_DB
+    env_file:
+      - ../.env.server
     volumes:
       - pgdata:/var/lib/postgresql/data
     networks:
       - v2b-network
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U $$POSTGRES_USER -d $$POSTGRES_DB"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
 
   ollama:
     image: ollama/ollama:latest
@@ -27,13 +38,15 @@ services:
       dockerfile: infrastructure/Dockerfile.backend
     restart: always
     depends_on:
-      - db
-      - ollama
-    environment:
-      DATABASE_URL: postgresql://user:password@db:5432/vibe2blender
-      OLLAMA_HOST: http://ollama:11434
-      GEMINI_API_KEY: ${GEMINI_API_KEY}
-      WASP_AUTH_TOKEN_SECRET: ${WASP_AUTH_TOKEN_SECRET}
+      db:
+        condition: service_healthy
+      ollama:
+        condition: service_started
+    # All secrets (GEMINI_API_KEY, DATABASE_URL, WASP_AUTH_TOKEN_SECRET,
+    # GEMINI_CACHE_NAME, OLLAMA_HOST, OLLAMA_MODEL) are injected at runtime.
+    # The Docker IMAGE contains ZERO hardcoded credentials.
+    env_file:
+      - ../.env.server
     networks:
       - v2b-network
 

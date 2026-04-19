@@ -73,7 +73,7 @@ wasp db migrate-dev
 
 ---
 
-## 6. Run the Application
+## 6. Run the Application (Local Development)
 
 Start the development server. Wasp will concurrently boot up your React frontend and Node.js backend:
 
@@ -83,6 +83,43 @@ wasp start
 
 - **Frontend Application**: `http://localhost:3000`
 - **Backend API**: `http://localhost:3001`
+
+---
+
+## 7. Run the Application (Docker Production Stack)
+
+To run the entire application stack (Frontend, Backend, Database, and Local AI) using Docker Compose, follow these steps:
+
+1. Ensure Docker Desktop is running.
+2. Create your server environment file (`.env.server`) in the project root:
+   ```bash
+   cp .env.example .env.server
+   ```
+3. Build the Docker images (this may take a few minutes the first time):
+   ```bash
+   docker-compose --env-file .env.server -f infrastructure/docker-compose.yml build
+   ```
+4. Start the stack in the background:
+   ```bash
+   docker-compose --env-file .env.server -f infrastructure/docker-compose.yml up -d
+   ```
+
+**To view the website and verify it's working:**
+1. Open your web browser and navigate to: **http://localhost:3000**
+2. You should see the Vibe2Blender application interface. If you see a login screen, create a test account and log in.
+3. In the chat input box at the bottom, type a prompt like: *"I want to create a low-poly neon sword."*
+4. After a short back-and-forth in the chat, click **Generate Script**.
+5. The right-side pane should populate with Python (`bpy`) code.
+
+**To view the Docker logs (if something isn't working):**
+- Backend logs: `docker logs -f infrastructure-backend-1`
+- Frontend logs: `docker logs -f infrastructure-frontend-1`
+- Database logs: `docker logs -f infrastructure-db-1`
+
+**To stop the Docker stack:**
+```bash
+docker-compose -f infrastructure/docker-compose.yml down
+```
 
 ---
 
