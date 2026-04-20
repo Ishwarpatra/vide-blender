@@ -15,7 +15,7 @@ export interface OllamaHealthResult {
  * Returns { online: true } when the local model host is reachable.
  * Called by the UI every 30 seconds to update the status indicator.
  */
-export const ollamaHealth = async (): Promise<OllamaHealthResult> => {
+export const ollamaHealth = async (_args: any, context: any): Promise<OllamaHealthResult> => {
   const start = Date.now();
   try {
     await axios.get(`${OLLAMA_HOST}/api/tags`, { timeout: 5000 });

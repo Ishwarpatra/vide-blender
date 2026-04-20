@@ -1,6 +1,6 @@
 datasource db {
-  provider = "postgresql"
-  url      = env("DATABASE_URL")
+  provider = "sqlite"
+  url      = "file:./dev.db"
 }
 
 generator client {
@@ -12,18 +12,41 @@ model User {
   username       String          @unique
   password       String
   createdAt      DateTime        @default(now())
+  chatSessions   ChatSession[]
   blenderScripts BlenderScript[]
 }
 
-model BlenderScript {
-  id             String   @id @default(uuid())
+model ChatSession {
+  id             String          @id @default(uuid())
   userId         String
-  user           User     @relation(fields: [userId], references: [id])
+  user           User            @relation(fields: [userId], references: [id])
+  title          String          @default("New Blender Project")
+  createdAt      DateTime        @default(now())
+  updatedAt      DateTime        @updatedAt
+  messages       ChatMessage[]
+  blenderScripts BlenderScript[]
+}
+
+model ChatMessage {
+  id            String      @id @default(uuid())
+  sessionId     String
+  session       ChatSession @relation(fields: [sessionId], references: [id])
+  role          String      // 'user' | 'assistant'
+  content       String
+  createdAt     DateTime    @default(now())
+}
+
+model BlenderScript {
+  id             String       @id @default(uuid())
+  userId         String
+  user           User         @relation(fields: [userId], references: [id])
+  sessionId      String?      // Optional: Link to a specific chat session
+  session        ChatSession? @relation(fields: [sessionId], references: [id])
   originalPrompt String
   refinedPrompt  String
   generatedCode  String
   // Absolute path on the host to the sandbox-generated .glb preview file.
   // Null until the blender-executor container completes successfully.
   glbPath        String?
-  createdAt      DateTime @default(now())
+  createdAt      DateTime     @default(now())
 }

@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useCallback } from 'react';
 import { useAction, useQuery } from 'wasp/client/operations';
-import { chat, generateScript, ollamaHealth } from 'wasp/client/operations';
+import { chat, generateScript } from 'wasp/client/operations';
 import { Sidebar } from '../components/Sidebar';
 import { RateLimitBanner } from '../components/RateLimitBanner';
 import { WelcomeScreen } from '../features/chat/WelcomeScreen';
@@ -21,16 +21,40 @@ export const MainPage = () => {
   const [retryAfter, setRetryAfter]     = useState(60);
   const [generatedCode, setGeneratedCode] = useState('');
 
+  const [currentSessionId, setCurrentSessionId] = useState<string | undefined>(undefined);
+
   // ── Wasp Action Hooks ──────────────────────────────────────────────
   const chatAction     = useAction(chat);
   const generateAction = useAction(generateScript);
 
-  // ── Real Ollama Health Check — polls every 30 seconds ─────────────
-  const { data: healthData } = useQuery(ollamaHealth, undefined, {
-    // Refetch every 30 seconds to keep the indicator accurate
-    refetchInterval: 30_000,
-  });
-  const ollamaOnline = healthData?.online ?? null; // null = loading, true/false = known
+  const [healthData, setHealthData] = useState<any>(null);
+  const [ollamaOnline, setOllamaOnline] = useState<boolean | null>(null);
+
+  useEffect(() => {
+    let isMounted = true;
+    const checkHealth = async () => {
+      try {
+        const fetchUrl = import.meta.env.VITE_API_URL || 'http://127.0.0.1:3001';
+        const res = await fetch(`${fetchUrl}/ollama-health`);
+        const data = await res.json();
+        if (isMounted) {
+          setHealthData(data);
+          setOllamaOnline(data?.online ?? false);
+        }
+      } catch (e) {
+        if (isMounted) {
+          setOllamaOnline(false);
+          setHealthData(null);
+        }
+      }
+    };
+    checkHealth();
+    const interval = setInterval(checkHealth, 30_000);
+    return () => {
+      isMounted = false;
+      clearInterval(interval);
+    };
+  }, []);
 
   // ── Rate Limit Handler ─────────────────────────────────────────────
   const handleRateLimitError = useCallback((error: any) => {
@@ -48,13 +72,26 @@ export const MainPage = () => {
     setGeneratedCode('');
     setIsTyping(false);
     setIsGenerating(false);
+    setCurrentSessionId(undefined);
   }, []);
 
   // ── Load a past session from the sidebar ──────────────────────────
-  const handleSelectScript = useCallback((code: string, originalPrompt: string) => {
-    setGeneratedCode(code);
-    // Restore at least the original prompt as context so the user can continue
-    setMessages([{ role: 'user', content: originalPrompt }]);
+  const handleSelectSession = useCallback(async (sessionId: string) => {
+    setCurrentSessionId(sessionId);
+    try {
+      const ops = await import('wasp/client/operations');
+      const details = await (ops as any).getChatSessionDetails({ sessionId });
+      if (details) {
+        setMessages(details.messages.map((m: any) => ({ role: m.role, content: m.content })));
+        if (details.blenderScripts && details.blenderScripts.length > 0) {
+          setGeneratedCode(details.blenderScripts[details.blenderScripts.length - 1].generatedCode);
+        } else {
+          setGeneratedCode('');
+        }
+      }
+    } catch (e) {
+      console.error('Failed to load session details:', e);
+    }
   }, []);
 
   // ── Send Chat Message ──────────────────────────────────────────────
@@ -65,12 +102,16 @@ export const MainPage = () => {
     setIsTyping(true);
     try {
       const response = await chatAction({
+        sessionId: currentSessionId,
         messages: updatedMessages.map((m) => ({
           role: m.role as 'user' | 'assistant',
           content: m.content,
         })),
-      });
-      setMessages((prev) => [...prev, { role: 'assistant', content: response.content }]);
+      } as any);
+      setMessages((prev) => [...prev, { role: 'assistant', content: (response as any).content }]);
+      if ((response as any).sessionId) {
+        setCurrentSessionId((response as any).sessionId);
+      }
     } catch (error: any) {
       console.error('CHAT_ERROR:', error);
       handleRateLimitError(error);
@@ -89,7 +130,7 @@ export const MainPage = () => {
     } finally {
       setIsTyping(false);
     }
-  }, [messages, chatAction, handleRateLimitError]);
+  }, [messages, chatAction, handleRateLimitError, currentSessionId]);
 
   // ── Generate Script ────────────────────────────────────────────────
   const handleGenerate = useCallback(async () => {
@@ -103,7 +144,7 @@ export const MainPage = () => {
 
     setIsGenerating(true);
     try {
-      const result = await generateAction({ refinedPrompt, originalPrompt });
+      const result = await generateAction({ refinedPrompt, originalPrompt, sessionId: currentSessionId } as any);
       if (result && (result as any).generatedCode) {
         setGeneratedCode((result as any).generatedCode);
       }
@@ -113,7 +154,7 @@ export const MainPage = () => {
     } finally {
       setIsGenerating(false);
     }
-  }, [messages, generateAction, handleRateLimitError]);
+  }, [messages, generateAction, handleRateLimitError, currentSessionId]);
 
   const handleSelectExample = useCallback((prompt: string) => {
     handleSendMessage(prompt);
@@ -127,7 +168,7 @@ export const MainPage = () => {
 
   const statusLabel =
     ollamaOnline === null  ? 'CHECKING...' :
-    ollamaOnline           ? `OLLAMA_ACTIVE${healthData?.latencyMs ? ` (${healthData.latencyMs}ms)` : ''}` :
+    ollamaOnline           ? `OLLAMA_ACTIVE${(healthData as any)?.latencyMs ? ` (${(healthData as any).latencyMs}ms)` : ''}` :
                              'OLLAMA_OFFLINE';
 
   return (
@@ -137,7 +178,7 @@ export const MainPage = () => {
 
       {/* Sidebar — now receives callbacks */}
       <Sidebar
-        onSelectScript={handleSelectScript}
+        onSelectSession={handleSelectSession}
         onNewProject={handleNewProject}
       />
 
@@ -148,7 +189,7 @@ export const MainPage = () => {
         <section className="flex-1 flex flex-col border-r border-border h-full md:h-full overflow-hidden">
           <header className="p-4 border-b border-border bg-secondary/50 flex items-center justify-between flex-shrink-0">
             <h2 className="text-[10px] uppercase tracking-widest font-black text-accent">
-              AI_INTERVIEWER ({healthData?.model?.toUpperCase() ?? 'QWEN_LOCAL'})
+              AI_INTERVIEWER ({(healthData as any)?.model?.toUpperCase() ?? 'QWEN_LOCAL'})
             </h2>
             <div className="flex items-center gap-2">
               <div className={`w-1.5 h-1.5 rounded-full ${statusColor} ${ollamaOnline ? 'animate-pulse' : ''}`} />

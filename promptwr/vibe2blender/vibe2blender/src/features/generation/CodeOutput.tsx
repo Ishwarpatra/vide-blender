@@ -35,7 +35,7 @@ export const CodeOutput = ({ code, onGenerate, isGenerating }: CodeOutputProps) 
         <div className="flex items-center gap-3">
           <div className={`w-2 h-2 rounded-full ${isGenerating ? 'bg-orange-500 animate-pulse' : 'bg-accent'}`} />
           <h2 className="text-[10px] uppercase tracking-widest font-black text-accent">
-            {isGenerating ? 'COMPILING_ASSETS...' : 'GENERATED_SCRIPT.BPY'}
+            {isGenerating ? 'FORMATTING...' : 'GENERATED_SCRIPT.BPY'}
           </h2>
         </div>
 

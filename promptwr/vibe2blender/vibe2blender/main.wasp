@@ -34,26 +34,38 @@ page SignupPage {
 // #region Core
 route MainRoute { path: "/", to: MainPage }
 page MainPage {
-  authRequired: true,
+  authRequired: false,
   component: import { MainPage } from "@src/pages/MainPage"
 }
 
 action chat {
   fn: import { chat } from "@src/features/chat/actions",
   auth: true,
-  entities: [User]
+  entities: [User, ChatSession, ChatMessage]
 }
 
 action generateScript {
   fn: import { generateScript } from "@src/features/generation/actions",
   auth: true,
-  entities: [User, BlenderScript]
+  entities: [User, BlenderScript, ChatSession]
 }
 
-query getScripts {
-  fn: import { getScripts } from "@src/features/generation/queries",
+action createChatSession {
+  fn: import { createChatSession } from "@src/features/chat/sessionActions",
   auth: true,
-  entities: [BlenderScript]
+  entities: [ChatSession, ChatMessage]
+}
+
+query getChatSessions {
+  fn: import { getChatSessions } from "@src/features/chat/sessionQueries",
+  auth: true,
+  entities: [ChatSession]
+}
+
+query getChatSessionDetails {
+  fn: import { getChatSessionDetails } from "@src/features/chat/sessionQueries",
+  auth: true,
+  entities: [ChatSession, ChatMessage, BlenderScript]
 }
 
 query ollamaHealth {

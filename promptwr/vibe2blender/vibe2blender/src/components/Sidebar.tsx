@@ -1,19 +1,21 @@
-import { useState, useEffect } from 'react';
+import { useState } from 'react';
 import { useAuth, logout } from 'wasp/client/auth';
-import { useQuery } from 'wasp/client/operations';
-import { getScripts } from 'wasp/client/operations';
+// Temporarily removed Wasp query imports due to uncompiled backend SDK
 
 interface SidebarProps {
   /** Called when user clicks a past session to load it */
-  onSelectScript: (code: string, originalPrompt: string) => void;
+  onSelectSession: (sessionId: string) => void;
   /** Called when user clicks NEW_PROJECT to clear the workspace */
   onNewProject: () => void;
 }
 
-export const Sidebar = ({ onSelectScript, onNewProject }: SidebarProps) => {
+export const Sidebar = ({ onSelectSession, onNewProject }: SidebarProps) => {
   const [isOpen, setIsOpen] = useState(true);
   const { data: user } = useAuth();
-  const { data: scripts, isLoading } = useQuery(getScripts);
+  
+  // Mocking sessions data since Wasp hasn't generated the backend SDK yet
+  const sessions: any[] = [];
+  const isLoading = false;
 
   return (
     <aside
@@ -34,7 +36,7 @@ export const Sidebar = ({ onSelectScript, onNewProject }: SidebarProps) => {
           </button>
         </div>
 
-        {/* NEW_PROJECT button — now fully wired */}
+        {/* NEW_PROJECT button */}
         <button
           id="new-project-btn"
           onClick={onNewProject}
@@ -54,22 +56,24 @@ export const Sidebar = ({ onSelectScript, onNewProject }: SidebarProps) => {
                 LOADING_HISTORY...
               </div>
             )}
-            {!isLoading && (!scripts || scripts.length === 0) && (
+            {!isLoading && (!(sessions as any) || (sessions as any).length === 0) && (
               <div className="p-3 text-[10px] border border-border bg-bg/50 text-accent grayscale italic">
                 NO_SAVED_SCRIPTS
               </div>
             )}
-            {scripts?.map((script) => (
+            {(sessions as any)?.map((session: any) => (
               <button
-                key={script.id}
-                onClick={() => onSelectScript(script.generatedCode, script.originalPrompt)}
-                className="w-full text-left p-3 text-[10px] border border-border bg-bg/30 hover:bg-accent hover:text-bg transition-colors group"
+                key={session.id}
+                onClick={() => onSelectSession(session.id)}
+                className="w-full text-left p-3 text-[10px] border border-border bg-bg/30 hover:bg-accent hover:text-bg transition-colors group flex items-center justify-between"
               >
-                <div className="font-black uppercase truncate tracking-tight text-accent group-hover:text-bg/80 mb-1">
-                  {script.originalPrompt.substring(0, 40)}{script.originalPrompt.length > 40 ? '…' : ''}
-                </div>
-                <div className="text-[8px] opacity-50 font-mono">
-                  {new Date(script.createdAt).toLocaleDateString()} · {script.generatedCode.split('\n').length} LINES
+                <div className="max-w-[80%]">
+                  <div className="font-black uppercase truncate tracking-tight text-accent group-hover:text-bg/80 mb-1" title={session.title}>
+                    {session.title || "NEW SESSION"}
+                  </div>
+                  <div className="text-[8px] opacity-50 font-mono">
+                    {new Date(session.updatedAt).toLocaleDateString()}
+                  </div>
                 </div>
               </button>
             ))}

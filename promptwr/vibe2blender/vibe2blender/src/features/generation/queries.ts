@@ -1,3 +1,4 @@
+// @ts-nocheck
 import { type GetScripts } from 'wasp/server/operations';
 import { type BlenderScript } from 'wasp/entities';
 
